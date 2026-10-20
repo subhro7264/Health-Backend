@@ -64,6 +64,84 @@
 
 // module.exports = passport;
 
+
+
+
+
+// const passport = require("passport");
+// const GoogleStrategy = require("passport-google-oauth20").Strategy;
+// const User = require("../models/User");
+
+// passport.use(
+//   new GoogleStrategy(
+//     {
+//       clientID: process.env.GOOGLE_CLIENT_ID,
+//       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+//       callbackURL: `${process.env.SERVER_URL}/api/auth/google/callback`,
+//     },
+//     async (accessToken, refreshToken, profile, done) => {
+//       try {
+//         let user = await User.findOne({ googleId: profile.id });
+
+//         if (user) {
+//           // Update tokens on login
+//           user.googleAccessToken = accessToken;
+//           if (refreshToken) {
+//             user.googleRefreshToken = refreshToken;
+//           }
+//           await user.save();
+//           return done(null, user);
+//         }
+
+//         const existingUser = await User.findOne({
+//           email: profile.emails[0].value,
+//         });
+
+//         if (existingUser) {
+//           existingUser.googleId = profile.id;
+//           existingUser.googleAccessToken = accessToken;
+//           if (refreshToken) existingUser.googleRefreshToken = refreshToken;
+//           existingUser.avatar = profile.photos[0]?.value || existingUser.avatar;
+//           await existingUser.save();
+//           return done(null, existingUser);
+//         }
+
+//         user = await User.create({
+//           googleId: profile.id,
+//           name: profile.displayName,
+//           email: profile.emails[0].value,
+//           avatar: profile.photos[0]?.value || "",
+//           authProvider: "google",
+//           isVerified: true,
+//           googleAccessToken: accessToken,
+//           googleRefreshToken: refreshToken,
+//         });
+
+//         done(null, user);
+//       } catch (error) {
+//         done(error, null);
+//       }
+//     },
+//   ),
+// );
+
+// passport.serializeUser((user, done) => {
+//   done(null, user.id);
+// });
+
+// passport.deserializeUser(async (id, done) => {
+//   try {
+//     const user = await User.findById(id);
+//     done(null, user);
+//   } catch (error) {
+//     done(error, null);
+//   }
+// });
+
+// module.exports = passport;
+
+
+
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const User = require("../models/User");
@@ -73,7 +151,10 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: `${process.env.SERVER_URL}/api/auth/google/callback`,
+      // Using a relative path + proxy: true automatically uses your Vercel HTTPS URL in production
+      // and http://localhost:5000 in local development
+      callbackURL: "/api/auth/google/callback",
+      proxy: true,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -85,40 +166,39 @@ passport.use(
           if (refreshToken) {
             user.googleRefreshToken = refreshToken;
           }
-          await user.save();
+          await user.save({ validateBeforeSave: false });
           return done(null, user);
         }
 
-        const existingUser = await User.findOne({
-          email: profile.emails[0].value,
-        });
+        const email = profile.emails?.[0]?.value;
+        const existingUser = email ? await User.findOne({ email }) : null;
 
         if (existingUser) {
           existingUser.googleId = profile.id;
           existingUser.googleAccessToken = accessToken;
           if (refreshToken) existingUser.googleRefreshToken = refreshToken;
-          existingUser.avatar = profile.photos[0]?.value || existingUser.avatar;
-          await existingUser.save();
+          existingUser.avatar = profile.photos?.[0]?.value || existingUser.avatar;
+          await existingUser.save({ validateBeforeSave: false });
           return done(null, existingUser);
         }
 
         user = await User.create({
           googleId: profile.id,
           name: profile.displayName,
-          email: profile.emails[0].value,
-          avatar: profile.photos[0]?.value || "",
+          email: email,
+          avatar: profile.photos?.[0]?.value || "",
           authProvider: "google",
           isVerified: true,
           googleAccessToken: accessToken,
           googleRefreshToken: refreshToken,
         });
 
-        done(null, user);
+        return done(null, user);
       } catch (error) {
-        done(error, null);
+        return done(error, null);
       }
-    },
-  ),
+    }
+  )
 );
 
 passport.serializeUser((user, done) => {

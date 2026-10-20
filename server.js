@@ -333,8 +333,6 @@
 
 
 
-
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -357,21 +355,7 @@ const app = express();
 // Required for secure cookies behind Vercel reverse proxy
 app.set('trust proxy', 1);
 
-// Connect to MongoDB
-// connectDB();
-
-
-// Replace top-level connectDB() with this middleware before your routes:
-app.use(async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (error) {
-    res.status(500).json({ success: false, message: "Database connection failed" });
-  }
-});
-
-// Normalize CLIENT_URL in your CORS config:
+// 1. CORS Configuration (Must run FIRST so preflight OPTIONS and error responses include CORS headers)
 const allowedOrigin = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
 app.use(
   cors({
@@ -381,20 +365,42 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
-// CORS configuration
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Persistent session store for serverless environments
+// 2. Public Health & Root Endpoints (Can respond immediately without waiting for DB)
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Backend API is running on Vercel',
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'MERN Auth API is running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+  });
+});
+
+// 3. Database Connection Middleware (Skips OPTIONS preflight requests)
+app.use(async (req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error('Database connection failed:', error.message);
+    res.status(500).json({ success: false, message: 'Database connection failed' });
+  }
+});
+
+// 4. Persistent Session Store
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'secret',
@@ -413,35 +419,17 @@ app.use(
   })
 );
 
-// Passport initialization
+// 5. Passport Initialization
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Request logger
+// Request Logger
 app.use((req, res, next) => {
   console.log(`Incoming Request: ${req.method} ${req.originalUrl}`);
   next();
 });
 
-// Root endpoint to prevent 404 on base domain
-app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Backend API is running on Vercel',
-  });
-});
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'MERN Auth API is running',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-  });
-});
-
-// Application Routes
+// 6. Application Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/fit', require('./routes/fit'));
@@ -450,12 +438,12 @@ app.use('/api/hydration', require('./routes/hydration'));
 app.use('/api/sleep', require('./routes/sleep'));
 app.use('/api/diet', require('./routes/dietRoutes'));
 
-// 404 handler
+// 404 Handler
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
 });
 
-// Global Error handler
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({
