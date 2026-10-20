@@ -358,8 +358,29 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Connect to MongoDB
-connectDB();
+// connectDB();
 
+
+// Replace top-level connectDB() with this middleware before your routes:
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Database connection failed" });
+  }
+});
+
+// Normalize CLIENT_URL in your CORS config:
+const allowedOrigin = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
+app.use(
+  cors({
+    origin: allowedOrigin,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
 // CORS configuration
 app.use(
   cors({
